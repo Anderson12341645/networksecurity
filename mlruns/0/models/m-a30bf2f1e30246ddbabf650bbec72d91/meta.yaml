@@ -1,0 +1,10 @@
+artifact_location: file:///D:/Test/MLL%2049/security/mlruns/0/models/m-a30bf2f1e30246ddbabf650bbec72d91/artifacts
+creation_timestamp: 1754571248952
+experiment_id: '0'
+last_updated_timestamp: 1754571253543
+model_id: m-a30bf2f1e30246ddbabf650bbec72d91
+model_type: null
+name: model
+source_run_id: d28d41aa2d51453eb532f5c6ce09bba4
+status: 2
+status_message: null

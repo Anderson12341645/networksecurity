@@ -32,7 +32,7 @@ class DataTransformation:
         try:
             return pd.read_csv(file_path)
         except Exception as e:
-            raise NetworkSecurityException(e, sys)
+            raise NetworkSecurityException(e, sys) # type: ignore
 
     def get_data_transformation_object(self) -> Pipeline:
         """
@@ -52,7 +52,7 @@ class DataTransformation:
             processor: Pipeline = Pipeline(steps=[("imputer", imputer)])
             return processor
         except Exception as e:
-            raise NetworkSecurityException(e, sys)
+            raise NetworkSecurityException(e, sys) # type: ignore
 
 
 
@@ -98,4 +98,4 @@ class DataTransformation:
             logging.info(f"Data transformation artifact: {data_transformation_artifact}")
             return data_transformation_artifact
         except Exception as e:
-            raise NetworkSecurityException(e, sys)
+            raise NetworkSecurityException(e, sys) # type: ignore
