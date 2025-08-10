@@ -1,18 +1,17 @@
 import os
 import sys
+import joblib
+import warnings
 from networksecurity.exception.exception import NetworkSecurityException
 from networksecurity.logging.logger import logging
-
 from networksecurity.entity.artifact_entity import DataTransformationArtifact, ModelTrainerArtifact
 from networksecurity.entity.config_entity import ModelTrainerConfig
-
 from networksecurity.utils.ml_utils.model.estimator import NetworkModel
 from networksecurity.utils.main_utils.utils import save_object, load_object
 from networksecurity.utils.main_utils.utils import load_numpy_array_data, evaluate_models
 from networksecurity.utils.ml_utils.metric.classification_metric import get_classification_score
 
 from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import (
     AdaBoostClassifier,
@@ -20,32 +19,47 @@ from sklearn.ensemble import (
     RandomForestClassifier
 )
 import mlflow
+import dagshub
 
+dagshub.init(repo_owner='Anderson12341645', repo_name='networksecurity', mlflow=True)
+
+# Suppress warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 class ModelTrainer:
     def __init__(self, 
                  model_trainer_config: ModelTrainerConfig,
-                 data_transformation_artifact: DataTransformationArtifact):  # Fixed parameter name
+                 data_transformation_artifact: DataTransformationArtifact):
         try:
             self.model_trainer_config = model_trainer_config
-            self.data_transformation_artifact = data_transformation_artifact  # Correct attribute
+            self.data_transformation_artifact = data_transformation_artifact
         except Exception as e:
             raise NetworkSecurityException(e, sys.exc_info())
         
-    def track_mlflow(self, model, classification_train_metric):
+    def track_mlflow(self, model, classification_metric):
         """
         Track the model and metrics using MLflow.
         """
         with mlflow.start_run():
-            f1_score = classification_train_metric.f1_score
-            precision_score = classification_train_metric.precision_score
-            recall_score = classification_train_metric.recall_score
+            f1_score = classification_metric.f1_score
+            precision_score = classification_metric.precision_score
+            recall_score = classification_metric.recall_score
+            
             mlflow.log_metric("f1_score", f1_score)
             mlflow.log_metric("precision_score", precision_score)
             mlflow.log_metric("recall_score", recall_score)
-            mlflow.sklearn.log_model(model, "model")
+            
+            # Save model locally
+            model_path = "model.pkl"
+            joblib.dump(model, model_path)
+            
+            # Log as artifact
+            mlflow.log_artifact(model_path, "model")
+            
+            # Remove temporary file
+            if os.path.exists(model_path):
+                os.remove(model_path)
     
-    # YOUR ORIGINAL train_model METHOD PRESERVED
     def train_model(self, X_train, y_train, X_test, y_test):
         try:
             models = {
@@ -93,10 +107,6 @@ class ModelTrainer:
             ]
             best_model = models[best_model_name]
 
-           
-            
-
-
             # Make predictions
             y_train_pred = best_model.predict(X_train)
             y_test_pred = best_model.predict(X_test)
@@ -104,10 +114,10 @@ class ModelTrainer:
             # Calculate metrics
             classification_train_metric = get_classification_score(y_true=y_train, y_pred=y_train_pred)
             classification_test_metric = get_classification_score(y_true=y_test, y_pred=y_test_pred)
-             ##Track the mlflow
-            self.track_mlflow(best_model,classification_train_metric)
-
-            self.track_mlflow(best_model,classification_test_metric)
+            
+            # Track mlflow with test metrics
+            self.track_mlflow(best_model, classification_test_metric)
+            self.track_mlflow(best_model, classification_train_metric)
 
             # Load preprocessor
             preprocessor = load_object(
@@ -124,6 +134,8 @@ class ModelTrainer:
                 obj=Network_model
             )
 
+            save_object("final_model/model.pkl", best_model)
+
             # Create artifact
             model_trainer_artifact = ModelTrainerArtifact(
                 trained_model_file_path=self.model_trainer_config.trained_model_file_path,
@@ -139,7 +151,7 @@ class ModelTrainer:
 
     def initiate_model_trainer(self) -> ModelTrainerArtifact:
         try:
-            # Use TRANSFORMATION artifacts instead of ingestion
+            # Use TRANSFORMATION artifacts
             train_file_path = self.data_transformation_artifact.transformed_train_file_path
             test_file_path = self.data_transformation_artifact.transformed_test_file_path
 

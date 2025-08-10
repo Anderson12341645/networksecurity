@@ -56,4 +56,4 @@ if __name__ == '__main__':
         logging.info(f"Model training completed successfully: {model_trainer_artifact}")
 
     except Exception as e:
-        raise NetworkSecurityException(e, sys) from e
+        raise NetworkSecurityException(str(e), sys.exc_info()) from e
