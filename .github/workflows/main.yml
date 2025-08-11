@@ -21,7 +21,7 @@ jobs:
       - name: Run unit tests
         run: echo "Running unit tests"
 
-  # Fixed: Job now properly indented under "jobs"
+ #   - name: Run integration tests
   build-and-push-ecr-image:
     name: Continuous Delivery
     needs: integration
