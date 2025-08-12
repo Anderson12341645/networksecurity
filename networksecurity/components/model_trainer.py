@@ -24,9 +24,14 @@ import dagshub
 dagshub.init(
     repo_owner='Anderson12341645',
     repo_name='networksecurity',
-    mlflow=True,
-    token=os.getenv('DAGSHUB_TOKEN')  # Add this line
+    mlflow=True
 )
+
+# Add explicit token authentication
+if 'DAGSHUB_TOKEN' in os.environ:
+    dagshub.auth.add_app_token(os.environ['DAGSHUB_TOKEN'])
+else:
+    raise ValueError("DAGSHUB_TOKEN environment variable is not set!")
 
 # Suppress warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
