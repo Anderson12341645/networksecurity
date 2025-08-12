@@ -31,25 +31,38 @@ logger.info(f"Loaded MongoDB URL: {mongo_db_url}")
 # Initialize client as None (will be set in lifespan handler)
 client = None
 
-# Lifespan handler for startup/shutdown events
+# Update your lifespan handler in app.py
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global client
     try:
         logger.info("Connecting to MongoDB...")
-        client = pymongo.MongoClient(
-            mongo_db_url,
-            tls=True,
-            tlsCAFile=certifi.where(),
-            serverSelectionTimeoutMS=5000
-        )
-        client.admin.command('ping')  # Test connection
-        logger.info("MongoDB connection successful")
+        
+        # Add retry mechanism
+        for attempt in range(3):
+            try:
+                client = pymongo.MongoClient(
+                    mongo_db_url,
+                    tls=True,
+                    tlsCAFile=certifi.where(),
+                    serverSelectionTimeoutMS=5000,
+                    retryWrites=True,
+                    retryReads=True,
+                    socketTimeoutMS=10000,
+                    connectTimeoutMS=10000
+                )
+                client.admin.command('ping')  # Test connection
+                logger.info("MongoDB connection successful")
+                break
+            except pymongo.errors.ServerSelectionTimeoutError as e:
+                logger.warning(f"Connection attempt {attempt+1} failed: {str(e)}")
+                if attempt == 2:
+                    raise
+                time.sleep(1)
     except Exception as e:
         logger.error(f"MongoDB connection failed: {str(e)}")
         client = None
     yield
-    # Shutdown code
     if client:
         logger.info("Closing MongoDB connection...")
         client.close()

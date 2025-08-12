@@ -9,6 +9,14 @@ RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
 
 RUN apt-get update && apt-get install -y awscli
 RUN pip install --no-cache-dir -r requirements.txt
+# Add these to your Dockerfile
+RUN apt-get update && \
+    apt-get install -y ca-certificates libssl-dev openssl && \
+    update-ca-certificates --fresh && \
+    rm -rf /var/lib/apt/lists/*
+
+# Ensure Python dependencies are installed after system packages
+RUN pip install --upgrade certifi
 CMD ["python3", "app.py"] 
 
 

@@ -147,3 +147,10 @@ jobs:
         if: always()
         run: |
           docker system prune -f
+
+      - name: Check SSL certificates
+        run: |
+            docker exec security bash -c "update-ca-certificates --fresh"
+            docker exec security bash -c "ls -l /etc/ssl/certs"
+            docker exec security bash -c "openssl version"
+            docker exec security python -c "import certifi; print(certifi.where())"
