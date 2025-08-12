@@ -56,84 +56,85 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-  continuous-deployment:
-    name: Deploy to EC2
-    needs: build-and-push-ecr-image
-    runs-on: self-hosted
-    steps:
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-          
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-
-      - name: Pull latest image
-        run: |
-          docker pull ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
-
-      - name: Stop and remove existing container
-        run: |
-          docker stop security || true
-          docker rm security || true
-
-      - name: Run new container
-        run: |
-            docker run -d -p 8000:8000 --ipc=host --name=security \
-            -e DAGSHUB_TOKEN=${{ secrets.DAGSHUB_TOKEN }} \
-            -e AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
-            -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
-            -e MONGODB_URL_KEY=${{ secrets.MONGODB_URL_KEY }} \
-            -e BIND=0.0.0.0:8000 \
-            "${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
-
-      - name: Verify application status
-        run: |
-          echo "Waiting for application to start..."
-          sleep 30
-          echo "Testing application health..."
-          curl -v http://localhost:8000/health || (echo "Health check failed! Container logs:"; docker logs security)
-          
-          # Add MongoDB connection test
-          echo "Testing MongoDB connection from EC2..."
-          docker exec security python -c "
-          import os, pymongo, certifi, sys
-          try:
-              print('Testing MongoDB connection...')
-              client = pymongo.MongoClient(
-                  os.environ['MONGODB_URL_KEY'], 
-                  tlsCAFile=certifi.where(),
-                  serverSelectionTimeoutMS=3000
-              )
-              client.server_info()
-              print('MongoDB connection successful!')
-              sys.exit(0)
-          except Exception as e:
-              print(f'MongoDB connection failed: {str(e)}')
-              sys.exit(1)
-          " || (echo "MongoDB connection test failed!"; docker logs security)
+ continuous-deployment:
+  name: Deploy to EC2
+  needs: build-and-push-ecr-image
+  runs-on: self-hosted
+  steps:
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
         
-      - name: Clean up unused images
-        run: |
-          docker system prune -f
-      - name: Test MongoDB connection
-        run: |
-            docker exec security python -c "
-            import os, pymongo, certifi, sys
-            try:
-                client = pymongo.MongoClient(
-                    os.environ['MONGODB_URL_KEY'], 
-                    tlsCAFile=certifi.where(),
-                    serverSelectionTimeoutMS=3000
-                )
-                client.server_info()
-                print('MongoDB connection successful!')
-                sys.exit(0)
-            except Exception as e:
-                print(f'MongoDB connection failed: {str(e)}')
-                sys.exit(1)
-            "
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Pull latest image
+      run: |
+        IMAGE_REF="${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
+        echo "Pulling image: ${IMAGE_REF}"
+        docker pull "${IMAGE_REF}"
+
+    - name: Stop and remove existing container
+      run: |
+        if docker inspect security >/dev/null 2>&1; then
+          echo "Stopping existing container..."
+          docker stop security
+          docker rm security
+        else
+          echo "No existing container found"
+        fi
+    - name: Debug image reference
+      run: |
+        echo "Registry: ${{ steps.login-ecr.outputs.registry }}"
+        echo "Repository: ${{ secrets.ECR_REPOSITORY_NAME }}"
+        echo "Full image ref: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
+        docker images
+
+    - name: Run new container
+      run: |
+        IMAGE_REF="${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
+        echo "Starting container with image: ${IMAGE_REF}"
+        
+        docker run -d \
+          -p 8000:8000 \
+          --ipc=host \
+          --name=security \
+          -e DAGSHUB_TOKEN="${{ secrets.DAGSHUB_TOKEN }}" \
+          -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+          -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+          -e MONGODB_URL_KEY="${{ secrets.MONGODB_URL_KEY }}" \
+          -e BIND=0.0.0.0:8000 \
+          "${IMAGE_REF}"
+
+    - name: Verify application status
+      run: |
+        echo "Waiting for application to start..."
+        sleep 30
+        echo "Testing application health..."
+        curl -f http://localhost:8000/health || (echo "Health check failed! Container logs:"; docker logs security; exit 1)
+        
+        echo "Testing MongoDB connection from EC2..."
+        docker exec security python -c "
+        import os, pymongo, certifi, sys
+        try:
+            print('Testing MongoDB connection...')
+            client = pymongo.MongoClient(
+                os.environ['MONGODB_URL_KEY'], 
+                tlsCAFile=certifi.where(),
+                serverSelectionTimeoutMS=3000
+            )
+            client.admin.command('ismaster')
+            print('MongoDB connection successful!')
+            sys.exit(0)
+        except Exception as e:
+            print(f'MongoDB connection failed: {str(e)}')
+            sys.exit(1)
+        " || (echo "MongoDB connection test failed!"; docker logs security; exit 1)
+      
+    - name: Clean up unused images
+      run: |
+        docker system prune -f
