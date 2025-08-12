@@ -56,94 +56,94 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
- continuous-deployment:
-  name: Deploy to EC2
-  needs: build-and-push-ecr-image
-  runs-on: self-hosted
-  steps:
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v1
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+  continuous-deployment:  # Fixed indentation - aligned with other jobs
+    name: Deploy to EC2
+    needs: build-and-push-ecr-image
+    runs-on: self-hosted
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
         
-    - name: Login to Amazon ECR
-      id: login-ecr-deploy
-      uses: aws-actions/amazon-ecr-login@v1
+      - name: Login to Amazon ECR
+        id: login-ecr-deploy
+        uses: aws-actions/amazon-ecr-login@v1
 
-    - name: Clean up old containers and images
-      run: |
-        docker ps -aq | xargs --no-run-if-empty docker rm -f
-        docker image prune -a -f
-        docker volume prune -f
-        docker system prune -f
+      - name: Clean up old containers and images
+        run: |
+          docker ps -aq | xargs --no-run-if-empty docker rm -f
+          docker image prune -a -f
+          docker volume prune -f
+          docker system prune -f
 
-    - name: Pull latest image
-      run: |
-        IMAGE_REF="${{ steps.login-ecr-deploy.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
-        IMAGE_REF=$(echo "${IMAGE_REF}" | tr -d '[:space:]')
-        echo "Pulling sanitized image: ${IMAGE_REF}"
-        docker pull "${IMAGE_REF}"
+      - name: Pull latest image
+        run: |
+          IMAGE_REF="${{ steps.login-ecr-deploy.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
+          IMAGE_REF=$(echo "${IMAGE_REF}" | tr -d '[:space:]')
+          echo "Pulling sanitized image: ${IMAGE_REF}"
+          docker pull "${IMAGE_REF}"
 
-    - name: Stop and remove existing container
-      run: |
-        if docker inspect security >/dev/null 2>&1; then
-          echo "Stopping existing container..."
-          docker stop security
-          docker rm security
-        else
-          echo "No existing container found"
-        fi
+      - name: Stop and remove existing container
+        run: |
+          if docker inspect security >/dev/null 2>&1; then
+            echo "Stopping existing container..."
+            docker stop security
+            docker rm security
+          else
+            echo "No existing container found"
+          fi
 
-    - name: Run new container
-      run: |
-        IMAGE_REF="${{ steps.login-ecr-deploy.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
-        IMAGE_REF=$(echo "${IMAGE_REF}" | tr -d '[:space:]')
-        echo "Starting container with sanitized image: ${IMAGE_REF}"
-        
-        docker run -d \
-          -p 8000:8000 \
-          --ipc=host \
-          --name=security \
-          -e DAGSHUB_TOKEN="${{ secrets.DAGSHUB_TOKEN }}" \
-          -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
-          -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
-          -e "MONGODB_URL_KEY=${{ secrets.MONGODB_URL_KEY }}" \
-          -e BIND=0.0.0.0:8000 \
-          "${IMAGE_REF}"
+      - name: Run new container
+        run: |
+          IMAGE_REF="${{ steps.login-ecr-deploy.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
+          IMAGE_REF=$(echo "${IMAGE_REF}" | tr -d '[:space:]')
+          echo "Starting container with sanitized image: ${IMAGE_REF}"
+          
+          docker run -d \
+            -p 8000:8000 \
+            --ipc=host \
+            --name=security \
+            -e DAGSHUB_TOKEN="${{ secrets.DAGSHUB_TOKEN }}" \
+            -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            -e "MONGODB_URL_KEY=${{ secrets.MONGODB_URL_KEY }}" \
+            -e BIND=0.0.0.0:8000 \
+            "${IMAGE_REF}"
 
-    - name: Check container logs immediately
-      run: |
-        echo "Checking container logs immediately after startup:"
-        docker logs security
+      - name: Check container logs immediately
+        run: |
+          echo "Checking container logs immediately after startup:"
+          docker logs security
 
-    - name: Verify application status
-      run: |
-        echo "Waiting for application to start..."
-        sleep 60  # Increased timeout
-        echo "Testing application health..."
-        curl -f http://localhost:8000/health || (echo "Health check failed! Container logs:"; docker logs security; exit 1)
-        
-        echo "Testing MongoDB connection from EC2..."
-        docker exec security python -c "
-        import os, pymongo, certifi, sys
-        try:
-            print('Testing MongoDB connection...')
-            client = pymongo.MongoClient(
-                os.environ['MONGODB_URL_KEY'], 
-                tlsCAFile=certifi.where(),
-                serverSelectionTimeoutMS=3000
-            )
-            client.admin.command('ismaster')
-            print('MongoDB connection successful!')
-            sys.exit(0)
-        except Exception as e:
-            print(f'MongoDB connection failed: {str(e)}')
-            sys.exit(1)
-        " || (echo "MongoDB connection test failed!"; docker logs security; exit 1)
+      - name: Verify application status
+        run: |
+          echo "Waiting for application to start..."
+          sleep 60  # Increased timeout
+          echo "Testing application health..."
+          curl -f http://localhost:8000/health || (echo "Health check failed! Container logs:"; docker logs security; exit 1)
+          
+          echo "Testing MongoDB connection from EC2..."
+          docker exec security python -c "
+          import os, pymongo, certifi, sys
+          try:
+              print('Testing MongoDB connection...')
+              client = pymongo.MongoClient(
+                  os.environ['MONGODB_URL_KEY'], 
+                  tlsCAFile=certifi.where(),
+                  serverSelectionTimeoutMS=3000
+              )
+              client.admin.command('ismaster')
+              print('MongoDB connection successful!')
+              sys.exit(0)
+          except Exception as e:
+              print(f'MongoDB connection failed: {str(e)}')
+              sys.exit(1)
+          " || (echo "MongoDB connection test failed!"; docker logs security; exit 1)
       
-    - name: Final cleanup
-      if: always()
-      run: |
-        docker system prune -f
+      - name: Final cleanup
+        if: always()
+        run: |
+          docker system prune -f
