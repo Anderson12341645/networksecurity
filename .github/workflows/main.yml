@@ -56,49 +56,48 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
- continuous-deployment:
-  name: Deploy to EC2
-  needs: build-and-push-ecr-image
-  runs-on: self-hosted
-  steps:
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v1
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+  continuous-deployment:  # FIXED INDENTATION - NO SPACE BEFORE NAME
+    name: Deploy to EC2
+    needs: build-and-push-ecr-image
+    runs-on: self-hosted
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Pull latest image
+        run: |
+          docker pull ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
+
+      - name: Stop and remove existing container
+        run: |
+          docker stop security || true
+          docker rm security || true
+
+      - name: Run new container
+        run: |
+          docker run -d -p 8000:8000 --ipc="host" --name=security \
+          -e DAGSHUB_TOKEN=${{ secrets.DAGSHUB_TOKEN }} \
+          -e AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
+          -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
+          -e MONGODB_URL_KEY=${{ secrets.MONGODB_URL_KEY }} \
+          -e BIND=0.0.0.0:8000 \
+          ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
+
+      - name: Verify application status
+        run: |
+          echo "Waiting for application to start..."
+          sleep 30
+          echo "Testing application health..."
+          curl -v http://localhost:8000/health || (echo "Health check failed! Container logs:"; docker logs security)
         
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
-
-    - name: Pull latest image
-      run: |
-        docker pull ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
-
-    - name: Stop and remove existing container
-      run: |
-        docker stop security || true
-        docker rm security || true
-
-    - name: Run new container
-      run: |
-        docker run -d -p 8000:8000 --ipc="host" --name=security \
-        -e DAGSHUB_TOKEN=${{ secrets.DAGSHUB_TOKEN }} \
-        -e AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
-        -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
-        -e MONGODB_URL_KEY=${{ secrets.MONGODB_URL_KEY }} \  # Added MongoDB
-        -e BIND=0.0.0.0:8000 \
-        ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
-
-    - name: Verify application status
-      run: |
-        echo "Waiting for application to start..."
-        sleep 30  # Increased to 30 seconds
-        echo "Testing application health..."
-        curl -v http://localhost:8000/health || (echo "Health check failed! Container logs:"; docker logs security)
-        
-    - name: Clean up unused images
-      run: |
-        docker system prune -f
-    
+      - name: Clean up unused images
+        run: |
+          docker system prune -f
