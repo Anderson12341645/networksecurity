@@ -18,6 +18,7 @@ from networksecurity.utils.main_utils.utils import load_object
 from networksecurity.utils.ml_utils.model.estimator import NetworkModel
 from networksecurity.constant.training_pipeline import DATA_INGESTION_COLLECTION_NAME, DATA_INGESTION_DATABASE_NAME
 
+
 # Initialize logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
