@@ -50,16 +50,20 @@ templates = Jinja2Templates(directory="./templates")
 async def connect_to_mongodb():
     global client
     try:
+        logger.info("Connecting to MongoDB...")
         client = pymongo.MongoClient(
             mongo_db_url,
             tlsCAFile=certifi.where(),
             serverSelectionTimeoutMS=5000
         )
-        # Test connection immediately
-        client.admin.command('ismaster')
-    except pymongo.errors.ServerSelectionTimeoutError as e:
+        # Use a more reliable connection test
+        client.admin.command('ping')
+        logger.info("MongoDB connection successful")
+    except pymongo.errors.ConnectionFailure as e:
         logger.error(f"MongoDB connection failed: {str(e)}")
         client = None
+        # Consider exiting if DB is critical
+        # sys.exit(1)
 
 @app.get("/", tags=["authentication"])
 async def index():
