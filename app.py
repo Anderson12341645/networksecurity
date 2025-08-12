@@ -1,58 +1,41 @@
 import sys
 import os
-import logging  # Added logging
-
+import logging
 import certifi
-ca = certifi.where()
-
 from dotenv import load_dotenv
-load_dotenv()
-mongo_db_url = os.getenv("MONGODB_URL_KEY")
-print(mongo_db_url)
 import pymongo
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, File, UploadFile, Request, HTTPException
+from uvicorn import run as app_run
+from fastapi.responses import Response, JSONResponse
+from starlette.responses import RedirectResponse
+import pandas as pd
+import numpy as np
 from networksecurity.exception.exception import NetworkSecurityException
 from networksecurity.logging.logger import logging
 from networksecurity.pipeline.training_pipeline import TrainingPipeline
-
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, File, UploadFile, Request, HTTPException  # Added HTTPException
-from uvicorn import run as app_run
-from fastapi.responses import Response, JSONResponse  # Added JSONResponse
-from starlette.responses import RedirectResponse
-import pandas as pd
-import numpy as np  # Added numpy
-
 from networksecurity.utils.main_utils.utils import load_object
 from networksecurity.utils.ml_utils.model.estimator import NetworkModel
+from networksecurity.constant.training_pipeline import DATA_INGESTION_COLLECTION_NAME, DATA_INGESTION_DATABASE_NAME
 
 # Initialize logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# Create MongoDB client with timeout
-try:
-    logger.info("Connecting to MongoDB...")
-    client = pymongo.MongoClient(
-        mongo_db_url, 
-        tlsCAFile=ca,
-        serverSelectionTimeoutMS=5000  # 5-second timeout
-    )
-    # Verify connection
-    client.server_info()
-    logger.info("MongoDB connection successful")
-except Exception as e:
-    logger.error(f"MongoDB connection failed: {str(e)}")
-    client = None  # Set client to None for graceful failure
+# Load environment variables
+load_dotenv()
+mongo_db_url = os.getenv("MONGODB_URL_KEY")
+logger.info(f"Loaded MongoDB URL: {mongo_db_url}")
 
-from networksecurity.constant.training_pipeline import DATA_INGESTION_COLLECTION_NAME
-from networksecurity.constant.training_pipeline import DATA_INGESTION_DATABASE_NAME
+# Initialize client as None (will be set in startup event)
+client = None
 
 app = FastAPI()
-origins = ["*"]
 
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -61,14 +44,41 @@ app.add_middleware(
 from fastapi.templating import Jinja2Templates
 templates = Jinja2Templates(directory="./templates")
 
+# MongoDB connection handler
+@app.on_event("startup")
+async def connect_to_mongodb():
+    global client
+    try:
+        logger.info("Connecting to MongoDB...")
+        client = pymongo.MongoClient(
+            mongo_db_url, 
+            tlsCAFile=certifi.where(),
+            serverSelectionTimeoutMS=5000
+        )
+        client.server_info()  # Test connection
+        logger.info("MongoDB connection successful")
+    except Exception as e:
+        logger.error(f"MongoDB connection failed: {str(e)}")
+        client = None
+
 @app.get("/", tags=["authentication"])
 async def index():
     return RedirectResponse(url="/docs")
 
 @app.get("/health")
 async def health_check():
-    """Simple health check endpoint"""
-    return JSONResponse(content={"status": "ok"}, status_code=200)
+    """Health check endpoint with DB status"""
+    try:
+        db_status = "connected" if client and client.server_info() else "disconnected"
+        return JSONResponse(
+            content={"status": "ok", "database": db_status},
+            status_code=200
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"status": "error", "detail": f"Health check failed: {str(e)}"},
+            status_code=500
+        )
 
 @app.get("/train")
 async def train_route():
@@ -119,7 +129,7 @@ async def predict_route(request: Request, file: UploadFile = File(...)):
         os.makedirs('prediction_output', exist_ok=True)
         df.to_csv('prediction_output/output.csv')
         
-        # Return simplified response instead of HTML
+        # Return simplified response
         return JSONResponse(content={
             "status": "success",
             "prediction_count": len(y_pred),

@@ -56,7 +56,7 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-  continuous-deployment:  # FIXED INDENTATION - NO SPACE BEFORE NAME
+  continuous-deployment:
     name: Deploy to EC2
     needs: build-and-push-ecr-image
     runs-on: self-hosted
@@ -97,6 +97,25 @@ jobs:
           sleep 30
           echo "Testing application health..."
           curl -v http://localhost:8000/health || (echo "Health check failed! Container logs:"; docker logs security)
+          
+          # Add MongoDB connection test
+          echo "Testing MongoDB connection from EC2..."
+          docker exec security python -c "
+          import os, pymongo, certifi, sys
+          try:
+              print('Testing MongoDB connection...')
+              client = pymongo.MongoClient(
+                  os.environ['MONGODB_URL_KEY'], 
+                  tlsCAFile=certifi.where(),
+                  serverSelectionTimeoutMS=3000
+              )
+              client.server_info()
+              print('MongoDB connection successful!')
+              sys.exit(0)
+          except Exception as e:
+              print(f'MongoDB connection failed: {str(e)}')
+              sys.exit(1)
+          " || (echo "MongoDB connection test failed!"; docker logs security)
         
       - name: Clean up unused images
         run: |

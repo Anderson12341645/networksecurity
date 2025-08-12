@@ -1,0 +1,3 @@
+[2025-08-12 16:43:55,036] 160 numexpr.utils - INFO - NumExpr defaulting to 8 threads.
+[2025-08-12 16:44:06,752] 34 app - INFO - Connecting to MongoDB...
+[2025-08-12 16:44:11,973] 44 app - ERROR - MongoDB connection failed: localhost:27017: [WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente, Timeout: 5.0s, Topology Description: <TopologyDescription id: 689b998607a96f2046741d3d, topology_type: Single, servers: [<ServerDescription ('localhost', 27017) server_type: Unknown, rtt: None, error=AutoReconnect('localhost:27017: [WinError 10061] Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente')>]>
