@@ -11,13 +11,13 @@ from fastapi.responses import Response, JSONResponse
 from starlette.responses import RedirectResponse
 import pandas as pd
 import numpy as np
+from contextlib import asynccontextmanager
 from networksecurity.exception.exception import NetworkSecurityException
 from networksecurity.logging.logger import logging
 from networksecurity.pipeline.training_pipeline import TrainingPipeline
 from networksecurity.utils.main_utils.utils import load_object
 from networksecurity.utils.ml_utils.model.estimator import NetworkModel
 from networksecurity.constant.training_pipeline import DATA_INGESTION_COLLECTION_NAME, DATA_INGESTION_DATABASE_NAME
-
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -28,10 +28,33 @@ load_dotenv()
 mongo_db_url = os.getenv("MONGODB_URL_KEY")
 logger.info(f"Loaded MongoDB URL: {mongo_db_url}")
 
-# Initialize client as None (will be set in startup event)
+# Initialize client as None (will be set in lifespan handler)
 client = None
 
-app = FastAPI()
+# Lifespan handler for startup/shutdown events
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global client
+    try:
+        logger.info("Connecting to MongoDB...")
+        client = pymongo.MongoClient(
+            mongo_db_url,
+            tls=True,
+            tlsCAFile=certifi.where(),
+            serverSelectionTimeoutMS=5000
+        )
+        client.admin.command('ping')  # Test connection
+        logger.info("MongoDB connection successful")
+    except Exception as e:
+        logger.error(f"MongoDB connection failed: {str(e)}")
+        client = None
+    yield
+    # Shutdown code
+    if client:
+        logger.info("Closing MongoDB connection...")
+        client.close()
+
+app = FastAPI(lifespan=lifespan)
 
 # CORS middleware
 app.add_middleware(
@@ -45,26 +68,6 @@ app.add_middleware(
 from fastapi.templating import Jinja2Templates
 templates = Jinja2Templates(directory="./templates")
 
-# MongoDB connection handler
-@app.on_event("startup")
-async def connect_to_mongodb():
-    global client
-    try:
-        logger.info("Connecting to MongoDB...")
-        client = pymongo.MongoClient(
-            mongo_db_url,
-            tlsCAFile=certifi.where(),
-            serverSelectionTimeoutMS=5000
-        )
-        # Use a more reliable connection test
-        client.admin.command('ping')
-        logger.info("MongoDB connection successful")
-    except pymongo.errors.ConnectionFailure as e:
-        logger.error(f"MongoDB connection failed: {str(e)}")
-        client = None
-        # Consider exiting if DB is critical
-        # sys.exit(1)
-
 @app.get("/", tags=["authentication"])
 async def index():
     return RedirectResponse(url="/docs")
@@ -73,15 +76,21 @@ async def index():
 async def health_check():
     """Health check endpoint with DB status"""
     try:
-        db_status = "connected" if client and client.server_info() else "disconnected"
+        if client:
+            # Use ping command to check connection
+            client.admin.command('ping')
+            db_status = "connected"
+        else:
+            db_status = "disconnected"
+            
         return JSONResponse(
             content={"status": "ok", "database": db_status},
             status_code=200
         )
-    except Exception as e:
+    except Exception:
         return JSONResponse(
-            content={"status": "error", "detail": f"Health check failed: {str(e)}"},
-            status_code=500
+            content={"status": "ok", "database": "disconnected"},
+            status_code=200
         )
 
 @app.get("/train")
