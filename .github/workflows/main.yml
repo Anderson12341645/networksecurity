@@ -106,18 +106,18 @@ jobs:
 
       - name: Run new container
         run: |
-          IMAGE_REF="${{ steps.login-ecr-deploy.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
-          IMAGE_REF=$(echo "${IMAGE_REF}" | tr -d '[:space:]')
-          echo "Starting container with sanitized image: ${IMAGE_REF}"
-          
-          docker run -d \
+            IMAGE_REF="${{ steps.login-ecr-deploy.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
+            IMAGE_REF=$(echo "${IMAGE_REF}" | tr -d '[:space:]')
+            echo "Starting container with sanitized image: ${IMAGE_REF}"
+            
+            docker run -d \
             -p 8000:8000 \
             --ipc=host \
             --name=security \
             -e DAGSHUB_TOKEN="${{ secrets.DAGSHUB_TOKEN }}" \
             -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
             -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
-            -e MONGODB_URL_KEY="${{ secrets.MONGODB_URL_KEY }}" \
+            -e "MONGODB_URL_KEY=${{ secrets.MONGODB_URL_KEY }}" \
             -e BIND=0.0.0.0:8000 \
             "${IMAGE_REF}"
 
