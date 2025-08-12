@@ -1,4 +1,4 @@
-name: workflow
+name: Deployment Workflow
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
         run: echo "Running unit tests"
 
   build-and-push-ecr-image:
-    name: Continuous Delivery
+    name: Build and Push to ECR
     needs: integration
     runs-on: ubuntu-latest
     steps:
@@ -56,13 +56,11 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-  Continuous-Deployment:
+  continuous-deployment:
+    name: Deploy to EC2
     needs: build-and-push-ecr-image
-    runs-on: self-hosted
+    runs-on: self-hosted  # This must run on your EC2 runner
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -74,18 +72,23 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Pull latest images
+      - name: Pull latest image
         run: |
           docker pull ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
 
-      - name: Run Docker image to serve users
+      - name: Stop and remove existing container
+        run: |
+          docker stop security || true
+          docker rm security || true
+
+      - name: Run new container
         run: |
           docker run -d -p 8000:8000 --ipc="host" --name=security \
+          -e DAGSHUB_TOKEN=${{ secrets.DAGSHUB_TOKEN }} \
           -e AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
           -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
           ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
-          
-      - name: Clean previous images and containers
+
+      - name: Clean up unused images
         run: |
           docker system prune -f
-          
