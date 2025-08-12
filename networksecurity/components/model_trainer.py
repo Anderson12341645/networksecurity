@@ -21,7 +21,12 @@ from sklearn.ensemble import (
 import mlflow
 import dagshub
 
-dagshub.init(repo_owner='Anderson12341645', repo_name='networksecurity', mlflow=True)
+dagshub.init(
+    repo_owner='Anderson12341645',
+    repo_name='networksecurity',
+    mlflow=True,
+    token=os.getenv('DAGSHUB_TOKEN')  # Add this line
+)
 
 # Suppress warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
