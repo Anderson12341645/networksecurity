@@ -8,9 +8,6 @@ RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
     echo "deb http://archive.debian.org/debian buster contrib main non-free" > /etc/apt/sources.list
 
 RUN apt-get update && apt-get install -y awscli
-RUN apt-get update && \
-    apt-get install -y libssl-dev ca-certificates && \
-    update-ca-certificates
 RUN pip install --no-cache-dir -r requirements.txt
 CMD ["python3", "app.py"] 
 
