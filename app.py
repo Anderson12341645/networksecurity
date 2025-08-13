@@ -167,6 +167,15 @@ async def predict_route(request: Request, file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
     
-if __name__=="__main__":
-    logger.info("Starting server on 0.0.0.0:8000...")
-    app_run(app, host="0.0.0.0", port=8000, log_level="info")
+ssl_keyfile = os.getenv("SSL_KEY_PATH")
+ssl_certfile = os.getenv("SSL_CERT_PATH")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=8000,
+        ssl_keyfile=ssl_keyfile if ssl_keyfile else None,
+        ssl_certfile=ssl_certfile if ssl_certfile else None
+    )

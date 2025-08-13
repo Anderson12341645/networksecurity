@@ -13,6 +13,10 @@ RUN apt-get update && \
         awscli && \
     update-ca-certificates --fresh && \
     rm -rf /var/lib/apt/lists/*
+RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout /app/private.key \
+    -out /app/certificate.crt \
+    -subj "/C=US/ST=State/L=City/O=Organization/OU=Unit/CN=localhost"
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
