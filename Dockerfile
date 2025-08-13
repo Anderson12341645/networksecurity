@@ -1,8 +1,13 @@
-# Use a newer base image with updated repositories
 FROM python:3.11-slim-bookworm
+
+# Install OpenSSL and create cert directory
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends openssl && \
+    mkdir -p /app/certs
 
 WORKDIR /app
 COPY . /app
+
 
 # Install system dependencies
 RUN apt-get update && \
