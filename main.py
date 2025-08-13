@@ -12,6 +12,7 @@ from networksecurity.components.model_trainer import ModelTrainer
 import sys
 import os
 
+
 if __name__ == '__main__':
     try:
         trainingpipelineconfig = TrainingPipelineConfig()
